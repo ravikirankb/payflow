@@ -14,8 +14,10 @@ type Server struct {
 func New(port string) *Server {
 	mux := http.NewServeMux()
 
-	handler := middleware.RequestID(
-		middleware.Logging(http.HandlerFunc(healthHandler)),
+	handler := middleware.Recovery(
+		middleware.RequestID(
+			middleware.Logging(http.HandlerFunc(healthHandler)),
+		),
 	)
 
 	mux.Handle("/health", handler)
@@ -31,8 +33,9 @@ func New(port string) *Server {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK"))
+	// w.WriteHeader(http.StatusOK)
+	// _, _ = w.Write([]byte("OK"))
+	panic("boom")
 }
 
 func (s *Server) Start() error {
