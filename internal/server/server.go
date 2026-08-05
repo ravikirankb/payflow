@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"net/http"
+
+	"github.com/ravikirankb/payflow/internal/middleware"
 )
 
 type Server struct {
@@ -12,10 +14,11 @@ type Server struct {
 func New(port string) *Server {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
+	handler := middleware.RequestID(
+		middleware.Logging(http.HandlerFunc(healthHandler)),
+	)
+
+	mux.Handle("/health", handler)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -25,6 +28,11 @@ func New(port string) *Server {
 	return &Server{
 		server: srv,
 	}
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
 }
 
 func (s *Server) Start() error {

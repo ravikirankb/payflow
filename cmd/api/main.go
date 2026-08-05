@@ -3,22 +3,26 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/ravikirankb/payflow/internal/config"
+	"github.com/ravikirankb/payflow/internal/logger"
 
 	"github.com/ravikirankb/payflow/internal/server"
 )
 
 func main() {
-	fmt.Println("Payflow Starting..!")
+	logger.Init()
+
+	slog.Info("Payflow Starting..!")
 
 	cfg := config.Load()
 
-	fmt.Println("Payflow starting on port %s", cfg.Port)
+	slog.Info("Payflow starting", "port", cfg.Port)
 
 	srv := server.New(cfg.Port)
 
@@ -27,7 +31,7 @@ func main() {
 	go func() {
 		err := srv.Start()
 		if err != nil {
-			fmt.Printf("Server error: %v\n", err)
+			slog.Error("server failed to start", "error", err)
 		}
 	}()
 
@@ -38,13 +42,13 @@ func main() {
 	// 2. Register the channel to receive specific OS signals.
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Println("Application started. Waiting for SIGINT (Ctrl+C) or SIGTERM...")
+	slog.Info("Application started. Waiting for SIGINT (Ctrl+C) or SIGTERM...")
 
 	// 3. Block until a signal is received.
 	sig := <-sigChan
 
 	// 4. Handle the received signal.
-	fmt.Printf("\nReceived signal: %v. Initiating graceful shutdown...\n", sig)
+	slog.Info("\nReceived signal: %v. Initiating graceful shutdown...\n", "signal", sig)
 
 	// Create a context with a 5-second timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -54,9 +58,9 @@ func main() {
 
 	err := srv.ShutDown(ctx)
 	if err != nil {
-		fmt.Printf("Shutdown failed or timed out: %v\n", err)
+		slog.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Shutdown complete. Exiting cleanly.")
+	slog.Info("Shutdown complete. Exiting cleanly.")
 }
