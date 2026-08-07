@@ -4,14 +4,18 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/ravikirankb/payflow/internal/config"
+	"github.com/ravikirankb/payflow/internal/database"
+	"github.com/ravikirankb/payflow/internal/handlers"
 	"github.com/ravikirankb/payflow/internal/logger"
-
+	"github.com/ravikirankb/payflow/internal/middleware"
+	"github.com/ravikirankb/payflow/internal/repository"
 	"github.com/ravikirankb/payflow/internal/server"
 )
 
@@ -22,9 +26,40 @@ func main() {
 
 	cfg := config.Load()
 
+	db, err := database.Init(cfg.DATABASE_URL)
+	if err != nil {
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	slog.Info("database connected")
+
+	paymentRepo := repository.NewPaymentRepository(db)
+
+	repoCtx, repoCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer repoCancel()
+
+	if err := paymentRepo.Ping(repoCtx); err != nil {
+		slog.Error("repository ping failed", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("repository initialized")
+
 	slog.Info("Payflow starting", "port", cfg.Port)
 
-	srv := server.New(cfg.Port)
+	mux := http.NewServeMux()
+	healthHandler := middleware.Recovery(
+		middleware.RequestID(
+			middleware.Logging(http.HandlerFunc(healthHandler)),
+		),
+	)
+
+	mux.Handle("/health", healthHandler)
+	mux.HandleFunc("/ready", handlers.Ready(paymentRepo))
+
+	srv := server.New(cfg.Port, mux)
 
 	fmt.Printf("Server starting on port: %s\n", cfg.Port)
 
@@ -51,16 +86,20 @@ func main() {
 	slog.Info("\nReceived signal: %v. Initiating graceful shutdown...\n", "signal", sig)
 
 	// Create a context with a 5-second timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutDownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 	// Ensure resources are released when the main function exits
-	defer cancel()
+	defer shutdownCancel()
 
-	err := srv.ShutDown(ctx)
-	if err != nil {
+	if err := srv.ShutDown(shutDownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
 
 	slog.Info("Shutdown complete. Exiting cleanly.")
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
 }

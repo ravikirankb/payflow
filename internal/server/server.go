@@ -3,39 +3,22 @@ package server
 import (
 	"context"
 	"net/http"
-
-	"github.com/ravikirankb/payflow/internal/middleware"
 )
 
 type Server struct {
 	server *http.Server
 }
 
-func New(port string) *Server {
-	mux := http.NewServeMux()
-
-	handler := middleware.Recovery(
-		middleware.RequestID(
-			middleware.Logging(http.HandlerFunc(healthHandler)),
-		),
-	)
-
-	mux.Handle("/health", handler)
+func New(port string, handler http.Handler) *Server {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	return &Server{
 		server: srv,
 	}
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	// w.WriteHeader(http.StatusOK)
-	// _, _ = w.Write([]byte("OK"))
-	panic("boom")
 }
 
 func (s *Server) Start() error {
