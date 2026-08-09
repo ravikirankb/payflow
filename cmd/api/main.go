@@ -15,9 +15,9 @@ import (
 	"github.com/ravikirankb/payflow/internal/handlers"
 	"github.com/ravikirankb/payflow/internal/logger"
 	"github.com/ravikirankb/payflow/internal/middleware"
-	"github.com/ravikirankb/payflow/internal/model"
 	"github.com/ravikirankb/payflow/internal/repository"
 	"github.com/ravikirankb/payflow/internal/server"
+	"github.com/ravikirankb/payflow/internal/service"
 )
 
 func main() {
@@ -37,6 +37,7 @@ func main() {
 	slog.Info("database connected")
 
 	paymentRepo := repository.NewPaymentRepository(db)
+	paymentService := service.NewPaymentService(paymentRepo)
 
 	repoCtx, repoCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer repoCancel()
@@ -47,22 +48,6 @@ func main() {
 	}
 
 	slog.Info("repository initialized")
-
-	payment := &model.Payment{
-		ID:       "11111111-1111-1111-1111-111111111111",
-		Amount:   1000,
-		Currency: "INR",
-		Status:   "PENDING",
-	}
-
-	paymentCtx, paymentCancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer paymentCancel()
-
-	if err := paymentRepo.Create(paymentCtx, payment); err != nil {
-		slog.Error("failed to create payment", "error", err)
-	} else {
-		slog.Info("payment inserted", "id", payment.ID)
-	}
 
 	slog.Info("Payflow starting", "port", cfg.Port)
 
@@ -75,6 +60,7 @@ func main() {
 
 	mux.Handle("/health", healthHandler)
 	mux.HandleFunc("/ready", handlers.Ready(paymentRepo))
+	mux.HandleFunc("/payments", handlers.CreatePayment(paymentService))
 
 	srv := server.New(cfg.Port, mux)
 
