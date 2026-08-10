@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/google/uuid"
 	"github.com/ravikirankb/payflow/internal/model"
@@ -9,14 +10,46 @@ import (
 )
 
 type PaymentService struct {
-	repo *repository.PaymentRepository
+	db              *sql.DB
+	paymentRepo     *repository.PaymentRepository
+	idempotencyRepo *repository.IdempotencyRepository
 }
 
-func NewPaymentService(repo *repository.PaymentRepository) *PaymentService {
-	return &PaymentService{repo: repo}
+func NewPaymentService(
+	db *sql.DB,
+	paymentRepo *repository.PaymentRepository,
+	idempotencyRepo *repository.IdempotencyRepository,
+) *PaymentService {
+	return &PaymentService{
+		db:              db,
+		paymentRepo:     paymentRepo,
+		idempotencyRepo: idempotencyRepo,
+	}
 }
 
-func (s *PaymentService) CreatePayment(ctx context.Context, amount int64, currency string) (*model.Payment, error) {
+func (s *PaymentService) CreatePayment(
+	ctx context.Context,
+	amount int64,
+	currency string,
+	idempotencyKey string,
+) (*model.Payment, error) {
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer tx.Rollback()
+
+	existingPaymentID, err := s.idempotencyRepo.GetPaymentID(ctx, tx, idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingPaymentID != "" {
+		return s.paymentRepo.GetByIDTx(ctx, tx, existingPaymentID)
+	}
+
 	payment := &model.Payment{
 		ID:       uuid.NewString(),
 		Amount:   amount,
@@ -24,7 +57,15 @@ func (s *PaymentService) CreatePayment(ctx context.Context, amount int64, curren
 		Status:   "PENDING",
 	}
 
-	if err := s.repo.Create(ctx, payment); err != nil {
+	if err := s.paymentRepo.CreateTx(ctx, tx, payment); err != nil {
+		return nil, err
+	}
+
+	if err := s.idempotencyRepo.Save(ctx, tx, idempotencyKey, payment.ID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 

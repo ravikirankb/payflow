@@ -19,13 +19,19 @@ func CreatePayment(svc *service.PaymentService) http.HandlerFunc {
 			return
 		}
 
+		key := r.Header.Get("Idempotency-Key")
+		if key == "" {
+			http.Error(w, "missing Idempotency-Key header", http.StatusBadRequest)
+			return
+		}
+
 		var req CreatePaymentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		payment, err := svc.CreatePayment(r.Context(), req.Amount, req.Currency)
+		payment, err := svc.CreatePayment(r.Context(), req.Amount, req.Currency, key)
 		if err != nil {
 			http.Error(w, "failed to crete payment", http.StatusInternalServerError)
 			return

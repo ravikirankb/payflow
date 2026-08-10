@@ -37,7 +37,8 @@ func main() {
 	slog.Info("database connected")
 
 	paymentRepo := repository.NewPaymentRepository(db)
-	paymentService := service.NewPaymentService(paymentRepo)
+	idempotencyRepo := repository.NewIdempotencyRepository(db)
+	paymentService := service.NewPaymentService(db, paymentRepo, idempotencyRepo)
 
 	repoCtx, repoCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer repoCancel()
