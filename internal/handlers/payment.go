@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/ravikirankb/payflow/internal/service"
 )
@@ -12,33 +13,62 @@ type CreatePaymentRequest struct {
 	Currency string `json:"currency"`
 }
 
+func validateCreatePaymentRequest(req CreatePaymentRequest) string {
+	if req.Amount <= 0 {
+		return "amount must be greater than zero"
+	}
+
+	if len(req.Currency) != 3 {
+		return "currency must be a 3-letter ISO code"
+	}
+
+	if strings.ToUpper(req.Currency) != req.Currency {
+		return "currency must be uppercase"
+	}
+
+	return ""
+}
+
 func CreatePayment(svc *service.PaymentService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
 
 		key := r.Header.Get("Idempotency-Key")
 		if key == "" {
-			http.Error(w, "missing Idempotency-Key header", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "missing Idempotency-Key header")
 			return
 		}
 
 		var req CreatePaymentRequest
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
-		payment, err := svc.CreatePayment(r.Context(), req.Amount, req.Currency, key)
+		if msg := validateCreatePaymentRequest(req); msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+
+		payment, err := svc.CreatePayment(
+			r.Context(),
+			req.Amount,
+			req.Currency,
+			key,
+		)
+
 		if err != nil {
-			http.Error(w, "failed to crete payment", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "failed to create payment")
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(payment)
+		_ = json.NewEncoder(w).Encode(payment)
 	}
 }

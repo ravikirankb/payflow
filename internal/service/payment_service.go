@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/ravikirankb/payflow/internal/model"
 	"github.com/ravikirankb/payflow/internal/repository"
 )
@@ -62,6 +65,32 @@ func (s *PaymentService) CreatePayment(
 	}
 
 	if err := s.idempotencyRepo.Save(ctx, tx, idempotencyKey, payment.ID); err != nil {
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+
+			// Another request inserted the key first.
+			_ = tx.Rollback()
+
+			tx2, err := s.db.BeginTx(ctx, nil)
+			if err != nil {
+				return nil, err
+			}
+			defer tx2.Rollback()
+
+			paymentID, err := s.idempotencyRepo.GetPaymentID(ctx, tx2, idempotencyKey)
+			if err != nil {
+				return nil, err
+			}
+
+			existingPayment, err := s.paymentRepo.GetByIDTx(ctx, tx2, paymentID)
+			if err != nil {
+				return nil, err
+			}
+
+			return existingPayment, nil
+		}
+
 		return nil, err
 	}
 
