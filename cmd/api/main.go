@@ -18,6 +18,7 @@ import (
 	"github.com/ravikirankb/payflow/internal/repository"
 	"github.com/ravikirankb/payflow/internal/server"
 	"github.com/ravikirankb/payflow/internal/service"
+	"github.com/ravikirankb/payflow/internal/worker"
 )
 
 func main() {
@@ -38,7 +39,14 @@ func main() {
 
 	paymentRepo := repository.NewPaymentRepository(db)
 	idempotencyRepo := repository.NewIdempotencyRepository(db)
-	paymentService := service.NewPaymentService(db, paymentRepo, idempotencyRepo)
+	outboxRepo := repository.NewOutboxRepository(db)
+
+	paymentService := service.NewPaymentService(
+		db,
+		paymentRepo,
+		idempotencyRepo,
+		outboxRepo,
+	)
 
 	repoCtx, repoCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer repoCancel()
@@ -73,6 +81,10 @@ func main() {
 			slog.Error("server failed to start", "error", err)
 		}
 	}()
+
+	// start the background worker to publish outbox events.
+	publisher := worker.NewOutboxPublisher(outboxRepo)
+	go publisher.Start(context.Background())
 
 	// 1. Create a buffered channel to receive os.Signal notifications.
 	// A buffer size of 1 is recommended to prevent missing signals.

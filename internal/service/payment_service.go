@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 
 	"github.com/google/uuid"
@@ -16,17 +17,20 @@ type PaymentService struct {
 	db              *sql.DB
 	paymentRepo     *repository.PaymentRepository
 	idempotencyRepo *repository.IdempotencyRepository
+	outboxRepo      *repository.OutboxRepository
 }
 
 func NewPaymentService(
 	db *sql.DB,
 	paymentRepo *repository.PaymentRepository,
 	idempotencyRepo *repository.IdempotencyRepository,
+	outboxRepo *repository.OutboxRepository,
 ) *PaymentService {
 	return &PaymentService{
 		db:              db,
 		paymentRepo:     paymentRepo,
 		idempotencyRepo: idempotencyRepo,
+		outboxRepo:      outboxRepo,
 	}
 }
 
@@ -61,6 +65,22 @@ func (s *PaymentService) CreatePayment(
 	}
 
 	if err := s.paymentRepo.CreateTx(ctx, tx, payment); err != nil {
+		return nil, err
+	}
+
+	payload, err := json.Marshal(payment)
+	if err != nil {
+		return nil, err
+	}
+
+	event := &model.OutboxEvent{
+		ID:          uuid.NewString(),
+		EventType:   "PaymentCreated",
+		AggregateID: payment.ID,
+		Payload:     payload,
+	}
+
+	if err := s.outboxRepo.CreateTx(ctx, tx, event); err != nil {
 		return nil, err
 	}
 
