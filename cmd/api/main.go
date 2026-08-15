@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/ravikirankb/payflow/internal/database"
 	"github.com/ravikirankb/payflow/internal/handlers"
 	"github.com/ravikirankb/payflow/internal/logger"
+	"github.com/ravikirankb/payflow/internal/messaging"
 	"github.com/ravikirankb/payflow/internal/middleware"
 	"github.com/ravikirankb/payflow/internal/repository"
 	"github.com/ravikirankb/payflow/internal/server"
@@ -82,32 +84,38 @@ func main() {
 		}
 	}()
 
-	// start the background worker to publish outbox events.
-	publisher := worker.NewOutboxPublisher(outboxRepo)
-	go publisher.Start(context.Background())
+	shutdownCtx, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+	defer stop()
 
-	// 1. Create a buffered channel to receive os.Signal notifications.
-	// A buffer size of 1 is recommended to prevent missing signals.
-	sigChan := make(chan os.Signal, 1)
+	producer, err := messaging.NewKafkaProducer(
+		[]string{"localhost:9092"},
+	)
+	if err != nil {
+		log.Fatalf("failed to create kafka producer: %v", err)
+	}
+	defer producer.Close()
 
-	// 2. Register the channel to receive specific OS signals.
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	publisher := worker.NewOutboxPublisher(
+		outboxRepo,
+		producer,
+	)
 
-	slog.Info("Application started. Waiting for SIGINT (Ctrl+C) or SIGTERM...")
+	go publisher.Start(shutdownCtx)
 
-	// 3. Block until a signal is received.
-	sig := <-sigChan
+	slog.Info("Application started. Waiting for shutdown signal...")
 
-	// 4. Handle the received signal.
-	slog.Info("\nReceived signal: %v. Initiating graceful shutdown...\n", "signal", sig)
+	<-shutdownCtx.Done()
 
-	// Create a context with a 5-second timeout
-	shutDownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	slog.Info("Shutdown signal received. Stopping server...")
 
-	// Ensure resources are released when the main function exits
-	defer shutdownCancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	if err := srv.ShutDown(shutDownCtx); err != nil {
+	if err := srv.ShutDown(ctx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}

@@ -5,15 +5,24 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ravikirankb/payflow/internal/messaging"
 	"github.com/ravikirankb/payflow/internal/repository"
 )
 
 type OutboxPublisher struct {
-	repo *repository.OutboxRepository
+	repo     *repository.OutboxRepository
+	producer *messaging.KafkaProducer
 }
 
-func NewOutboxPublisher(repo *repository.OutboxRepository) *OutboxPublisher {
-	return &OutboxPublisher{repo: repo}
+func NewOutboxPublisher(
+	repo *repository.OutboxRepository,
+	producer *messaging.KafkaProducer,
+) *OutboxPublisher {
+
+	return &OutboxPublisher{
+		repo:     repo,
+		producer: producer,
+	}
 }
 
 func (w *OutboxPublisher) Start(ctx context.Context) {
@@ -43,14 +52,21 @@ func (w *OutboxPublisher) publishBatch(ctx context.Context) {
 
 	for _, event := range events {
 
-		// Simulate publishing to Kafka
-		slog.Info(
-			"published outbox event",
-			"event_id", event.ID,
-			"event_type", event.EventType,
-			"aggregate_id", event.AggregateID,
-			"payload", string(event.Payload),
+		err := w.producer.Publish(
+			ctx,
+			"payments.created",
+			event.AggregateID,
+			event.Payload,
 		)
+
+		if err != nil {
+			slog.Error(
+				"failed to publish event",
+				"event_id", event.ID,
+				"error", err,
+			)
+			continue
+		}
 
 		if err := w.repo.MarkPublished(ctx, event.ID); err != nil {
 			slog.Error(
