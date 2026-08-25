@@ -52,10 +52,17 @@ func (w *OutboxPublisher) publishBatch(ctx context.Context) {
 
 	for _, event := range events {
 
+		// Map the domain event to its Kafka topic.
+		//
+		// EventType is "PaymentCreated", while the Kafka topic
+		// is "payments.created". They don't have to be identical.
+		topic := "payments.created"
+
 		err := w.producer.Publish(
 			ctx,
-			"payments.created",
+			topic,
 			event.AggregateID,
+			event.ID,
 			event.Payload,
 		)
 
