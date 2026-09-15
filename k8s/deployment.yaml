@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: payflow-api
+
+spec:
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: payflow-api
+
+  template:
+    metadata:
+      labels:
+        app: payflow-api
+
+    spec:
+      containers:
+        - name: payflow-api
+          image: payflow-api:local
+
+          ports:
+            - containerPort: 8080
+
+          envFrom:
+            - configMapRef:
+               name: payflow-config
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+          
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
