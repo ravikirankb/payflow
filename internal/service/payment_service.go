@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/ravikirankb/payflow/internal/metrics"
 	"github.com/ravikirankb/payflow/internal/model"
 	"github.com/ravikirankb/payflow/internal/repository"
 )
@@ -117,6 +118,8 @@ func (s *PaymentService) CreatePayment(
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+
+	metrics.PaymentsCreated.Inc()
 
 	return payment, nil
 }
