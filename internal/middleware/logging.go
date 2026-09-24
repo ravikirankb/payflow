@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/ravikirankb/payflow/internal/metrics"
 )
 
 func Logging(next http.Handler) http.Handler {
@@ -16,6 +18,10 @@ func Logging(next http.Handler) http.Handler {
 
 		// 3. After the handler finishes, calculate duration
 		duration := time.Since(start)
+
+		metrics.HTTPRequestDuration.
+			WithLabelValues(r.Method, r.URL.Path).
+			Observe(duration.Seconds())
 
 		requestID, ok := r.Context().Value(requestIDKey).(string)
 		if !ok {

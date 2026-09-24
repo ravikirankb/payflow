@@ -9,6 +9,15 @@ var PaymentsCreated = prometheus.NewCounter(
 	},
 )
 
+var HTTPRequestDuration = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name: "payflow_http_request_duration_seconds",
+		Help: "Duration of HTTP requests in seconds.",
+	},
+	[]string{"method", "path"},
+)
+
 func init() {
 	prometheus.MustRegister(PaymentsCreated)
+	prometheus.MustRegister(HTTPRequestDuration)
 }
