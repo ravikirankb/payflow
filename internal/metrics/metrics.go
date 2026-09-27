@@ -17,7 +17,16 @@ var HTTPRequestDuration = prometheus.NewHistogramVec(
 	[]string{"method", "path"},
 )
 
+var HTTPRequestsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "payflow_http_requests_total",
+		Help: "Total number of HTTP requests.",
+	},
+	[]string{"method", "path"},
+)
+
 func init() {
 	prometheus.MustRegister(PaymentsCreated)
 	prometheus.MustRegister(HTTPRequestDuration)
+	prometheus.MustRegister(HTTPRequestsTotal)
 }

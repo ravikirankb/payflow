@@ -23,6 +23,10 @@ func Logging(next http.Handler) http.Handler {
 			WithLabelValues(r.Method, r.URL.Path).
 			Observe(duration.Seconds())
 
+		metrics.HTTPRequestsTotal.
+			WithLabelValues(r.Method, r.URL.Path).
+			Inc()
+
 		requestID, ok := r.Context().Value(requestIDKey).(string)
 		if !ok {
 			requestID = "unknown"
