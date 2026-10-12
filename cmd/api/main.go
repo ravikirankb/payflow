@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/ravikirankb/payflow/internal/cache"
 	"github.com/ravikirankb/payflow/internal/config"
 	"github.com/ravikirankb/payflow/internal/database"
 	"github.com/ravikirankb/payflow/internal/handlers"
@@ -50,6 +51,11 @@ func main() {
 		idempotencyRepo,
 		outboxRepo,
 	)
+
+	paymentCache := cache.NewPaymentCache(cfg.REDIS_ADDR)
+	defer paymentCache.Close()
+
+	paymentService.SetPaymentCache(paymentCache)
 
 	repoCtx, repoCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer repoCancel()
