@@ -14,9 +14,10 @@ func Init(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(100)
-	db.SetMaxIdleConns(20)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(1 * time.Minute)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
